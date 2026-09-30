@@ -19,6 +19,7 @@ app_snake/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .dockerignore
+├── DEPLOY.md        # Deployment manual en la VPS (SPEC-003)
 ├── README.md
 └── .gitignore
 ```
@@ -37,9 +38,10 @@ La aplicación se empaqueta en una imagen basada en `nginx:1.31-alpine` que sirv
 
 | Elemento              | Valor                                  |
 | --------------------- | -------------------------------------- |
+| Proyecto Compose      | `snake-cicd`                           |
 | Servicio Compose      | `snake`                                |
 | Imagen                | `snake-cicd:latest`                    |
-| Puerto                | host `8080` → contenedor `80`          |
+| Puerto                | `127.0.0.1:8080` → contenedor `80`     |
 | Health check          | `GET /` cada 30 s (`wget` a 127.0.0.1) |
 | Usuario en contenedor | `nginx` (no-root)                      |
 
@@ -60,6 +62,8 @@ Abrir <http://localhost:8080>, o comprobar sin navegador:
 ```bash
 curl http://localhost:8080
 ```
+
+> El puerto se publica solo en `127.0.0.1` (no en todas las interfaces), por lo que la app no queda expuesta a la red. En WSL2 se puede abrir igualmente desde el navegador de Windows en `localhost:8080`.
 
 ### Estado
 
@@ -100,7 +104,7 @@ docker compose up -d
 
 ```text
 Dockerfile           # Imagen nginx:1.31-alpine + archivos estáticos + health check
-docker-compose.yml   # Servicio único "snake"
+docker-compose.yml   # Proyecto "snake-cicd", servicio único "snake"
 .dockerignore        # Solo envía src/ y nginx/ al build context
 nginx/nginx.conf     # Configuración mínima de Nginx (sitio estático, no-root)
 ```
@@ -146,3 +150,33 @@ Las constantes están al inicio de `src/game.js`:
 | `GRID_SIZE`   | `20`      | Tamaño lógico del tablero (20 × 20)  |
 
 La versión se define solo en `APP_VERSION`; el HTML la muestra desde esa constante.
+
+## Deployment manual en VPS
+
+El procedimiento completo (usuario de deployment, deploy key SSH, clonado en `/opt/apps/snake-cicd/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
+
+```bash
+# Primer deployment (en la VPS, como usuario de deployment)
+git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/snake-cicd
+cd /opt/apps/snake-cicd
+docker compose build && docker compose up -d
+docker compose ps                    # debe mostrar (healthy)
+curl -i http://127.0.0.1:8080        # 200 OK + HTML
+
+# Actualización
+git pull --ff-only
+docker compose build && docker compose up -d
+```
+
+### Rollback
+
+```bash
+cd /opt/apps/snake-cicd
+git log --oneline -n 10              # elegir el commit estable anterior
+git checkout <commit>                # queda en detached HEAD (esperado)
+docker compose build && docker compose up -d
+docker compose ps                    # verificar (healthy)
+curl -s http://127.0.0.1:8080/game.js | grep 'const APP_VERSION'
+```
+
+Mientras la VPS esté en un commit de rollback no ejecutar `git pull`. Una vez corregido el problema en `main` (con `git revert`, sin reescribir historia), volver con `git checkout main && git pull --ff-only` y reconstruir.

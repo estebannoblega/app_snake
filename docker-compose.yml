@@ -1,9 +1,13 @@
+name: snake-cicd
+
 services:
   snake:
     build: .
     image: snake-cicd:latest
     ports:
-      - "8080:80"
+      # Solo accesible desde la propia máquina; el reverse proxy es quien
+      # eventualmente publica la aplicación.
+      - "127.0.0.1:8080:80"
     restart: unless-stopped
     cap_drop:
       - ALL
