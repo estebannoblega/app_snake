@@ -20,7 +20,12 @@ app_snake/
 ├── docker-compose.yml  # Servicio "snake" en la red proxy-net (sin puertos en el host)
 ├── compose.local.yml   # Override solo para desarrollo local: publica 127.0.0.1:8080
 ├── .dockerignore
-├── DEPLOY.md        # Deployment manual en la VPS (SPEC-003)
+├── scripts/
+│   └── deploy.sh    # Deploy en la VPS (lo ejecuta GitHub Actions por SSH)
+├── .github/workflows/
+│   └── ci-cd.yml    # Pipeline CI/CD: tests → deploy → verificación
+├── CICD.md          # CI/CD: funcionamiento, credenciales y operación (SPEC-004)
+├── DEPLOY.md        # Preparación y deployment manual en la VPS (SPEC-003)
 ├── README.md
 └── .gitignore
 ```
@@ -168,14 +173,20 @@ Las constantes están al inicio de `src/game.js`:
 
 La versión se define solo en `APP_VERSION`; el HTML la muestra desde esa constante.
 
+## CI/CD
+
+Cada push a `main` ejecuta los tests en GitHub Actions y, si pasan, despliega automáticamente en la VPS (`/opt/apps/app_snake`) por SSH con el usuario `deploy`, verificando que el contenedor quede healthy en `proxy-net` y que el dominio sirva la nueva versión. Los pull requests hacia `main` solo ejecutan los tests.
+
+La configuración (qué secrets crear, la clave SSH de CI restringida, la huella del servidor) y la operación (leer resultados, redesplegar, rollback) están en [CICD.md](CICD.md).
+
 ## Deployment manual en VPS
 
-El servicio se conecta a la red existente `proxy-net` y no publica puertos en el host. El procedimiento completo (usuario de deployment, deploy key SSH, verificación de la red, clonado en `/opt/apps/snake-cicd/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
+El servicio se conecta a la red existente `proxy-net` y no publica puertos en el host. El procedimiento completo (usuario de deployment, deploy key SSH, verificación de la red, clonado en `/opt/apps/app_snake/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
 
 ```bash
 # Primer deployment (en la VPS, como usuario de deployment)
-git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/snake-cicd
-cd /opt/apps/snake-cicd
+git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/app_snake
+cd /opt/apps/app_snake
 docker compose build && docker compose up -d
 docker network inspect proxy-net >/dev/null   # la red debe existir (no se crea)
 docker compose ps                    # debe mostrar (healthy)
@@ -189,7 +200,7 @@ docker compose build && docker compose up -d
 ### Rollback
 
 ```bash
-cd /opt/apps/snake-cicd
+cd /opt/apps/app_snake
 git log --oneline -n 10              # elegir el commit estable anterior
 git checkout <commit>                # queda en detached HEAD (esperado)
 docker compose build && docker compose up -d

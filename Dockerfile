@@ -1,7 +1,12 @@
 FROM nginx:1.31-alpine
 
-# Configuración propia; se elimina el sitio por defecto de la imagen.
-RUN rm -f /etc/nginx/conf.d/default.conf
+# Identifica las imágenes de Snake (el deploy limpia solo las huérfanas con esta etiqueta).
+LABEL org.opencontainers.image.title="snake-cicd"
+
+# Configuración propia; se eliminan el sitio y las páginas por defecto de la
+# imagen (index.html "Welcome to nginx" y 50x.html) para servir solo Snake.
+RUN rm -f /etc/nginx/conf.d/default.conf \
+ && rm -rf /usr/share/nginx/html/*
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Archivos estáticos de la aplicación (propiedad de root, solo lectura para nginx).

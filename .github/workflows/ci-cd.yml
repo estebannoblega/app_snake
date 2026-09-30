@@ -1,0 +1,135 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests y validación
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Tests unitarios
+        run: node --test --test-reporter=spec tests/*.test.js
+
+      - name: Validar script de deploy
+        run: shellcheck scripts/deploy.sh
+
+      - name: Validar docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Build de la imagen
+        run: docker compose build
+
+      - name: Smoke test del contenedor en proxy-net
+        run: |
+          docker network create proxy-net
+          docker compose up -d --wait --wait-timeout 60
+          cid="$(docker compose ps -q snake)"
+          if [ -n "$(docker port "$cid")" ]; then
+            echo "::error::El contenedor publica puertos en el host"; exit 1
+          fi
+          docker run --rm --network proxy-net --entrypoint wget snake-cicd:latest -q -O - http://snake-cicd/ | grep '<title>Snake</title>' >/dev/null
+          echo "Contenedor healthy y respondiendo en http://snake-cicd/ dentro de proxy-net"
+
+      - name: Logs del contenedor (si falló)
+        if: failure()
+        run: docker compose logs
+
+      - name: Limpieza
+        if: always()
+        run: docker compose down
+
+  deploy:
+    name: Deploy a VPS
+    needs: test
+    # Solo commits de main (push o ejecución manual sobre main); nunca PRs ni otras ramas.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL || 'https://snake.enoblega.com.ar' }}
+    # Un deploy a la vez; los pendientes esperan en orden.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_USER: deploy
+      APP_DIR: /opt/apps/app_snake
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://snake.enoblega.com.ar' }}
+    steps:
+      - name: Checkout (solo la versión de la app)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: src/game.js
+          sparse-checkout-cone-mode: false
+
+      - name: Verificar configuración
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          missing=0
+          for name in VPS_HOST VPS_SSH_KEY VPS_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Falta el secret $name en el environment 'production'"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Configurar SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy en la VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "$DEPLOY_USER@$VPS_HOST" "$APP_DIR/scripts/deploy.sh $GITHUB_SHA"
+
+      - name: Verificar URL pública
+        run: |
+          expected="$(grep -oE 'APP_VERSION = "[^"]+"' src/game.js)"
+          for i in 1 2 3 4 5; do
+            served="$(curl -fsS --max-time 10 "$PUBLIC_URL/game.js" | grep -oE 'APP_VERSION = "[^"]+"' || true)"
+            if [ "$served" = "$expected" ]; then
+              echo "$PUBLIC_URL responde con $served"
+              exit 0
+            fi
+            echo "Intento $i: versión pública '${served:-sin respuesta}', esperada '$expected'"
+            sleep 10
+          done
+          echo "::error::$PUBLIC_URL no sirve la versión desplegada"
+          exit 1
+
+      - name: Eliminar clave SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

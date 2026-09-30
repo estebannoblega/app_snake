@@ -1,7 +1,11 @@
 # Deployment manual en VPS (SPEC-003)
 
-Procedimiento manual para desplegar, actualizar y hacer rollback de Snake en la VPS.
-Es la base que luego se automatizará en SPEC-004 (CI) y SPEC-005 (CD).
+Procedimiento manual para preparar la VPS, desplegar, actualizar y hacer rollback de Snake.
+
+> Desde SPEC-004 los deploys a `main` son automáticos mediante GitHub Actions
+> (ver [CICD.md](CICD.md)). Este documento sirve para la preparación inicial de la
+> VPS, para operar a mano en caso de emergencia y como referencia de lo que
+> automatiza `scripts/deploy.sh`.
 
 > Todos los pasos los ejecuta el administrador en la VPS. Este documento no
 > modifica el reverse proxy (`/opt/webserver/`), DNS, HTTPS ni el firewall.
@@ -10,7 +14,7 @@ Es la base que luego se automatizará en SPEC-004 (CI) y SPEC-005 (CD).
 
 | Elemento               | Valor                                        |
 | ---------------------- | -------------------------------------------- |
-| Directorio             | `/opt/apps/snake-cicd/`                      |
+| Directorio             | `/opt/apps/app_snake/`                      |
 | Repositorio            | `git@github.com:estebannoblega/app_snake.git` |
 | Proyecto Compose       | `snake-cicd`                                 |
 | Servicio Compose       | `snake`                                      |
@@ -26,7 +30,7 @@ VPS
  │        │
  │        │  red Docker proxy-net
  │        ▼
- └── /opt/apps/snake-cicd/      ← este repositorio
+ └── /opt/apps/app_snake/      ← este repositorio
         └── docker compose → snake (alias snake-cicd, puerto interno 80)
 ```
 
@@ -125,15 +129,15 @@ La respuesta esperada es `Hi estebannoblega/app_snake! You've successfully authe
 Como administrador (una sola vez):
 
 ```bash
-sudo mkdir -p /opt/apps/snake-cicd
-sudo chown deploy:deploy /opt/apps/snake-cicd
+sudo mkdir -p /opt/apps/app_snake
+sudo chown deploy:deploy /opt/apps/app_snake
 ```
 
 Como `deploy`, clonar el repositorio dentro del directorio:
 
 ```bash
-git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/snake-cicd
-cd /opt/apps/snake-cicd
+git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/app_snake
+cd /opt/apps/app_snake
 git log -1 --oneline
 ```
 
@@ -163,7 +167,7 @@ contenedor. Informar el conflicto y decidir antes de seguir.
 ## 6. Primer deployment
 
 ```bash
-cd /opt/apps/snake-cicd
+cd /opt/apps/app_snake
 docker compose build
 docker compose up -d
 ```
@@ -250,7 +254,7 @@ hacer commit y `git push`.
 En la VPS:
 
 ```bash
-cd /opt/apps/snake-cicd
+cd /opt/apps/app_snake
 
 # Anotar el commit actual: es el punto de retorno si hay que hacer rollback.
 git log -1 --oneline
@@ -272,7 +276,7 @@ hay cambios locales en la VPS o la historia divergió: no forzar, revisar con
 Se vuelve a un commit anterior con Git y se reconstruye la imagen desde ese código.
 
 ```bash
-cd /opt/apps/snake-cicd
+cd /opt/apps/app_snake
 
 # 1. Identificar el commit al que se quiere volver.
 git log --oneline -n 10
@@ -308,7 +312,7 @@ docker compose ps
 
 ## 10. Operación
 
-Siempre desde `/opt/apps/snake-cicd`:
+Siempre desde `/opt/apps/app_snake`:
 
 | Acción           | Comando                  |
 | ---------------- | ------------------------ |
