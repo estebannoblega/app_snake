@@ -1,0 +1,8 @@
+# Solo para desarrollo local: publica la app en http://localhost:8080.
+# No se usa en la VPS.
+#
+#   docker compose -f docker-compose.yml -f compose.local.yml up -d
+services:
+  snake:
+    ports:
+      - "127.0.0.1:8080:80"

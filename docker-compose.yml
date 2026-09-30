@@ -4,12 +4,20 @@ services:
   snake:
     build: .
     image: snake-cicd:latest
-    ports:
-      # Solo accesible desde la propia máquina; el reverse proxy es quien
-      # eventualmente publica la aplicación.
-      - "127.0.0.1:8080:80"
+    # Sin puertos publicados en el host: el reverse proxy llega a la app
+    # por la red proxy-net en http://snake-cicd:80.
+    networks:
+      proxy-net:
+        aliases:
+          - snake-cicd
     restart: unless-stopped
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+networks:
+  proxy-net:
+    # Red de la infraestructura del reverse proxy: debe existir previamente
+    # y este proyecto no la crea ni la elimina.
+    external: true

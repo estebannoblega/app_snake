@@ -17,7 +17,8 @@ app_snake/
 ├── nginx/
 │   └── nginx.conf   # Configuración de Nginx para la imagen Docker
 ├── Dockerfile
-├── docker-compose.yml
+├── docker-compose.yml  # Servicio "snake" en la red proxy-net (sin puertos en el host)
+├── compose.local.yml   # Override solo para desarrollo local: publica 127.0.0.1:8080
 ├── .dockerignore
 ├── DEPLOY.md        # Deployment manual en la VPS (SPEC-003)
 ├── README.md
@@ -36,12 +37,27 @@ app_snake/
 
 La aplicación se empaqueta en una imagen basada en `nginx:1.31-alpine` que sirve los archivos estáticos de `src/`. Requiere Docker Engine y Docker Compose v2 (`docker compose`). Funciona en Linux y WSL2.
 
+El servicio no publica puertos en el host: se conecta a la red Docker externa `proxy-net`, donde el reverse proxy lo alcanza como `http://snake-cicd:80`. Para desarrollo local, `compose.local.yml` agrega el puerto `127.0.0.1:8080`.
+
+### Preparación local (una sola vez)
+
+```bash
+# Crear la red si no existe (en la VPS ya existe y no se crea desde este proyecto)
+docker network inspect proxy-net >/dev/null 2>&1 || docker network create proxy-net
+
+# En cada terminal de desarrollo: usar el override local en todos los comandos
+export COMPOSE_FILE=docker-compose.yml:compose.local.yml
+```
+
+Con `COMPOSE_FILE` definido, los comandos siguientes publican la app en `localhost:8080`. Sin esa variable (como en la VPS) solo se usa `docker-compose.yml`.
+
 | Elemento              | Valor                                  |
 | --------------------- | -------------------------------------- |
 | Proyecto Compose      | `snake-cicd`                           |
 | Servicio Compose      | `snake`                                |
 | Imagen                | `snake-cicd:latest`                    |
-| Puerto                | `127.0.0.1:8080` → contenedor `80`     |
+| Red                   | `proxy-net` (externa), alias `snake-cicd` |
+| Puertos en el host    | Ninguno (local: `127.0.0.1:8080` con `compose.local.yml`) |
 | Health check          | `GET /` cada 30 s (`wget` a 127.0.0.1) |
 | Usuario en contenedor | `nginx` (no-root)                      |
 
@@ -63,7 +79,7 @@ Abrir <http://localhost:8080>, o comprobar sin navegador:
 curl http://localhost:8080
 ```
 
-> El puerto se publica solo en `127.0.0.1` (no en todas las interfaces), por lo que la app no queda expuesta a la red. En WSL2 se puede abrir igualmente desde el navegador de Windows en `localhost:8080`.
+> Con `compose.local.yml` el puerto se publica solo en `127.0.0.1` (no en todas las interfaces), por lo que la app no queda expuesta a la red.
 
 ### Estado
 
@@ -104,7 +120,8 @@ docker compose up -d
 
 ```text
 Dockerfile           # Imagen nginx:1.31-alpine + archivos estáticos + health check
-docker-compose.yml   # Proyecto "snake-cicd", servicio único "snake"
+docker-compose.yml   # Proyecto "snake-cicd", servicio único "snake" en proxy-net
+compose.local.yml    # Override de desarrollo: publica 127.0.0.1:8080
 .dockerignore        # Solo envía src/ y nginx/ al build context
 nginx/nginx.conf     # Configuración mínima de Nginx (sitio estático, no-root)
 ```
@@ -153,15 +170,16 @@ La versión se define solo en `APP_VERSION`; el HTML la muestra desde esa consta
 
 ## Deployment manual en VPS
 
-El procedimiento completo (usuario de deployment, deploy key SSH, clonado en `/opt/apps/snake-cicd/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
+El servicio se conecta a la red existente `proxy-net` y no publica puertos en el host. El procedimiento completo (usuario de deployment, deploy key SSH, verificación de la red, clonado en `/opt/apps/snake-cicd/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
 
 ```bash
 # Primer deployment (en la VPS, como usuario de deployment)
 git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/snake-cicd
 cd /opt/apps/snake-cicd
 docker compose build && docker compose up -d
+docker network inspect proxy-net >/dev/null   # la red debe existir (no se crea)
 docker compose ps                    # debe mostrar (healthy)
-curl -i http://127.0.0.1:8080        # 200 OK + HTML
+docker run --rm --network proxy-net nginx:1.31-alpine wget -qO- http://snake-cicd/   # HTML de Snake
 
 # Actualización
 git pull --ff-only
@@ -176,7 +194,7 @@ git log --oneline -n 10              # elegir el commit estable anterior
 git checkout <commit>                # queda en detached HEAD (esperado)
 docker compose build && docker compose up -d
 docker compose ps                    # verificar (healthy)
-curl -s http://127.0.0.1:8080/game.js | grep 'const APP_VERSION'
+docker run --rm --network proxy-net nginx:1.31-alpine wget -qO- http://snake-cicd/game.js | grep "const APP_VERSION"
 ```
 
 Mientras la VPS esté en un commit de rollback no ejecutar `git pull`. Una vez corregido el problema en `main` (con `git revert`, sin reescribir historia), volver con `git checkout main && git pull --ff-only` y reconstruir.

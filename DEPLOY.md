@@ -15,15 +15,29 @@ Es la base que luego se automatizará en SPEC-004 (CI) y SPEC-005 (CD).
 | Proyecto Compose       | `snake-cicd`                                 |
 | Servicio Compose       | `snake`                                      |
 | Imagen                 | `snake-cicd:latest` (se construye en la VPS) |
-| Puerto                 | `127.0.0.1:8080` → contenedor `80`           |
+| Red                    | `proxy-net` (externa, ya existente)          |
+| Nombre en la red       | `snake-cicd` → `http://snake-cicd:80`        |
+| Puertos en el host     | Ninguno                                      |
 | Usuario de deployment  | `deploy` (o el usuario de apps ya existente) |
 
 ```text
 VPS
  ├── /opt/webserver/            ← reverse proxy existente (NO se toca)
+ │        │
+ │        │  red Docker proxy-net
+ │        ▼
  └── /opt/apps/snake-cicd/      ← este repositorio
-        └── docker compose → snake → 127.0.0.1:8080
+        └── docker compose → snake (alias snake-cicd, puerto interno 80)
 ```
+
+Para no repetir el comando en las verificaciones, se usa un contenedor temporal
+conectado a `proxy-net` que simula al reverse proxy (se elimina solo con `--rm`):
+
+```bash
+alias snake-get='docker run --rm --network proxy-net nginx:1.31-alpine wget -qO-'
+```
+
+Definirlo en la sesión antes de verificar (o reemplazar `snake-get` por el comando completo).
 
 ---
 
@@ -123,15 +137,28 @@ cd /opt/apps/snake-cicd
 git log -1 --oneline
 ```
 
-## 5. Verificar que el puerto esté libre
+## 5. Verificar la red `proxy-net`
+
+La red pertenece a la infraestructura del reverse proxy. Debe existir y **no se
+crea desde este proyecto**:
 
 ```bash
-ss -ltn | grep ':8080 ' || echo "8080 libre"
-docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8080 || echo "ningún contenedor usa 8080"
+docker network inspect proxy-net --format '{{.Name}} ({{.Driver}})'
 ```
 
-Si el puerto está ocupado **no continuar**: no cambiar el puerto ni detener el
-otro servicio. Informar el conflicto y decidir antes de seguir.
+Esperado: `proxy-net (bridge)`. Si responde `network proxy-net not found`,
+**no continuar** y no crearla: informar y resolverlo del lado de la infraestructura.
+
+Verificar que ningún otro contenedor de la red use el nombre `snake-cicd`:
+
+```bash
+for c in $(docker network inspect proxy-net --format '{{range .Containers}}{{.Name}} {{end}}'); do
+  docker inspect --format '{{.Name}} {{(index .NetworkSettings.Networks "proxy-net").Aliases}}' "$c"
+done | grep -w snake-cicd || echo "snake-cicd libre"
+```
+
+Si el nombre está en uso **no continuar**: no renombrar ni tocar el otro
+contenedor. Informar el conflicto y decidir antes de seguir.
 
 ## 6. Primer deployment
 
@@ -150,8 +177,9 @@ El deployment se considera exitoso solo si el contenedor está **healthy**
 docker compose ps
 ```
 
-Esperado: `Up ... (healthy)` y en `PORTS` únicamente `127.0.0.1:8080->80/tcp`.
-Durante los primeros segundos puede verse `(health: starting)`.
+Esperado: `Up ... (healthy)` y en `PORTS` solo `80/tcp` (puerto interno, sin
+`->`: no hay nada publicado en el host). Durante los primeros segundos puede
+verse `(health: starting)`.
 
 Estado de salud directo:
 
@@ -166,31 +194,42 @@ docker compose logs
 docker compose logs | grep -Eai 'emerg|alert|crit|error' || echo "sin errores"
 ```
 
-HTTP desde la VPS:
+Conexión a la red (debe listar `proxy-net` y el alias `snake-cicd`):
 
 ```bash
-curl -i http://127.0.0.1:8080
+docker inspect --format '{{range $n, $c := .NetworkSettings.Networks}}{{$n}} {{$c.Aliases}}{{"\n"}}{{end}}' "$(docker compose ps -q snake)"
 ```
 
-Esperado: `HTTP/1.1 200 OK` y el HTML de Snake.
+HTTP desde `proxy-net` (como lo verá el reverse proxy):
+
+```bash
+snake-get http://snake-cicd/
+```
+
+Esperado: el HTML de Snake. Sin HTML, o un error `bad address`/`Connection refused`,
+indica que el contenedor no está en la red o no está levantado.
 
 Versión desplegada:
 
 ```bash
-curl -s http://127.0.0.1:8080/game.js | grep 'const APP_VERSION'
+snake-get http://snake-cicd/game.js | grep 'const APP_VERSION'
 ```
-
-Comprobar que **no** está expuesto hacia afuera (desde otra máquina, con la IP
-pública de la VPS): `curl http://<IP_VPS>:8080` debe fallar.
 
 ### Verificación funcional en navegador
 
-Como el servicio solo escucha en `127.0.0.1`, para probarlo desde tu PC antes de
-publicarlo en el reverse proxy se puede usar un túnel SSH:
+Como no hay puertos publicados, para probarlo desde tu PC antes de publicarlo en
+el reverse proxy se puede usar un túnel SSH hacia la IP del contenedor en `proxy-net`.
+
+En la VPS, obtener la IP (cambia si el contenedor se recrea):
 
 ```bash
-# En tu PC
-ssh -L 8080:127.0.0.1:8080 <usuario>@<IP_VPS>
+docker inspect --format '{{(index .NetworkSettings.Networks "proxy-net").IPAddress}}' "$(docker compose ps -q snake)"
+```
+
+En tu PC:
+
+```bash
+ssh -L 8080:<IP_CONTENEDOR>:80 <usuario>@<IP_VPS>
 ```
 
 Y abrir <http://localhost:8080>. Verificar: carga de la interfaz, movimiento,
@@ -198,7 +237,7 @@ controles (flechas y WASD), comida, score, Game Over, RESTART, High Score y el
 texto `Version X.Y.Z` en el pie.
 
 > Si en tu PC el puerto 8080 está ocupado (por ejemplo, por el contenedor local),
-> usar otro puerto local: `ssh -L 9080:127.0.0.1:8080 ...` y abrir `localhost:9080`.
+> usar otro puerto local: `ssh -L 9080:<IP_CONTENEDOR>:80 ...` y abrir `localhost:9080`.
 
 ## 8. Actualización manual
 
@@ -221,7 +260,7 @@ docker compose build
 docker compose up -d
 
 docker compose ps
-curl -s http://127.0.0.1:8080/game.js | grep 'const APP_VERSION'
+snake-get http://snake-cicd/game.js | grep 'const APP_VERSION'
 ```
 
 Esperado: `(healthy)` y la nueva versión. Si `git pull --ff-only` falla es porque
@@ -247,8 +286,7 @@ docker compose up -d
 
 # 4. Verificar salud, HTTP y versión.
 docker compose ps
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080
-curl -s http://127.0.0.1:8080/game.js | grep 'const APP_VERSION'
+snake-get http://snake-cicd/game.js | grep 'const APP_VERSION'
 ```
 
 Mientras la VPS esté en un commit de rollback **no ejecutar `git pull`**.
@@ -288,11 +326,31 @@ reinicio de la VPS, salvo que se haya detenido con `docker compose down`.
 ## 11. Publicación mediante el reverse proxy (manual, fuera de alcance)
 
 La publicación la hace el administrador modificando manualmente el reverse
-proxy existente para que apunte a `127.0.0.1:8080`. Nada de este repositorio
-modifica `/opt/webserver/`.
+proxy existente. Nada de este repositorio modifica `/opt/webserver/`.
 
-> **Importante:** `127.0.0.1:8080` es alcanzable por un reverse proxy que corre
-> **directamente en el host**. Si el reverse proxy corre **dentro de un contenedor**
-> (con red bridge), para él `127.0.0.1` es su propio contenedor y no llegará a
-> Snake. En ese caso habrá que definir, en una etapa posterior, cómo se conectan
-> (por ejemplo, una red Docker compartida) sin cambiar lo definido en esta SPEC.
+El reverse proxy debe estar conectado a `proxy-net` y apuntar a:
+
+```text
+http://snake-cicd:80
+```
+
+Ejemplo orientativo para un reverse proxy Nginx en contenedor:
+
+```nginx
+location / {
+    # DNS interno de Docker: resuelve el nombre en cada request, así el proxy
+    # arranca aunque Snake esté detenido y sigue funcionando si se recrea.
+    resolver 127.0.0.11 valid=10s;
+    set $snake_upstream http://snake-cicd:80;
+    proxy_pass $snake_upstream;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+> Con `proxy_pass http://snake-cicd:80;` directo (sin `resolver`/variable),
+> Nginx resuelve el nombre solo al arrancar: si Snake no está levantado en ese
+> momento, el reverse proxy no inicia (`host not found in upstream`).
