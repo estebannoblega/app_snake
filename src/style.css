@@ -1,0 +1,166 @@
+:root {
+  --bg: #020617;
+  --surface: #0f172a;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #22c55e;
+  --accent-strong: #16a34a;
+  --danger: #f43f5e;
+  --radius: 12px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+  overflow-x: hidden;
+}
+
+.app {
+  width: 100%;
+  max-width: 440px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 8px 0 0;
+  font-size: 2rem;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+}
+
+.scoreboard {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreboard p {
+  margin: 0;
+}
+
+.scoreboard span {
+  font-weight: 700;
+}
+
+.board-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 0 0 2px #1e293b;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: var(--radius);
+  background: rgba(2, 6, 23, 0.6);
+  text-align: center;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.overlay p {
+  margin: 0;
+}
+
+.overlay-title {
+  font-size: clamp(1.6rem, 8vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--danger);
+}
+
+.overlay-score {
+  font-size: 1.2rem;
+}
+
+.restart {
+  min-width: 160px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent-strong);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.restart:hover {
+  background: var(--accent);
+}
+
+.restart:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 3px;
+}
+
+.help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.version {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+}

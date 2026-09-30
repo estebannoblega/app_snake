@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Classic Snake game built with HTML, CSS and JavaScript.">
+  <title>Snake</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <h1 class="title">SNAKE</h1>
+
+    <section class="scoreboard" aria-label="Scoreboard">
+      <p>Score: <span id="score">0</span></p>
+      <p>High Score: <span id="high-score">0</span></p>
+    </section>
+
+    <div class="board-wrapper">
+      <canvas id="board" class="board" width="400" height="400" role="img"
+              aria-label="Snake game board, 20 by 20 grid">
+        Your browser does not support the canvas element.
+      </canvas>
+      <div id="overlay" class="overlay" hidden>
+        <p id="overlay-title" class="overlay-title">GAME OVER</p>
+        <p id="overlay-score" class="overlay-score">Score: 0</p>
+      </div>
+    </div>
+
+    <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
+
+    <button id="restart" class="restart" type="button">RESTART</button>
+
+    <p class="help">Use <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move.</p>
+
+    <footer id="version" class="version"></footer>
+  </main>
+</body>
+</html>
