@@ -1,0 +1,11 @@
+services:
+  snake:
+    build: .
+    image: snake-cicd:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

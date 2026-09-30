@@ -14,6 +14,11 @@ app_snake/
 │   └── game.js      # Lógica del juego, rendering y persistencia
 ├── tests/
 │   └── game.test.js # Tests de la lógica crítica (node:test)
+├── nginx/
+│   └── nginx.conf   # Configuración de Nginx para la imagen Docker
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
 ├── README.md
 └── .gitignore
 ```
@@ -26,17 +31,85 @@ app_snake/
 - La partida termina al chocar con un borde o con el propio cuerpo.
 - `RESTART` inicia una nueva partida (el High Score se conserva en `localStorage`).
 
-## Ejecutar localmente
+## Ejecutar con Docker (recomendado)
 
-La app es estática: basta con servir la carpeta `src/`.
+La aplicación se empaqueta en una imagen basada en `nginx:1.31-alpine` que sirve los archivos estáticos de `src/`. Requiere Docker Engine y Docker Compose v2 (`docker compose`). Funciona en Linux y WSL2.
 
-**Con Docker (nginx):**
+| Elemento              | Valor                                  |
+| --------------------- | -------------------------------------- |
+| Servicio Compose      | `snake`                                |
+| Imagen                | `snake-cicd:latest`                    |
+| Puerto                | host `8080` → contenedor `80`          |
+| Health check          | `GET /` cada 30 s (`wget` a 127.0.0.1) |
+| Usuario en contenedor | `nginx` (no-root)                      |
+
+### Construcción
 
 ```bash
-docker run --rm -p 8080:80 -v "$PWD/src":/usr/share/nginx/html:ro nginx:alpine
+docker compose build
 ```
 
-Abrir <http://localhost:8080>.
+### Inicio
+
+```bash
+docker compose up -d
+```
+
+Abrir <http://localhost:8080>, o comprobar sin navegador:
+
+```bash
+curl http://localhost:8080
+```
+
+### Estado
+
+```bash
+docker compose ps
+```
+
+La columna `STATUS` muestra `(healthy)` cuando Nginx responde correctamente, o `(unhealthy)` si falla el health check. Durante los primeros segundos puede verse `(health: starting)`.
+
+### Logs
+
+```bash
+docker compose logs
+```
+
+### Logs en tiempo real
+
+```bash
+docker compose logs -f
+```
+
+### Detener
+
+```bash
+docker compose down
+```
+
+### Publicar cambios de código
+
+Después de modificar archivos en `src/`:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+### Archivos de Docker
+
+```text
+Dockerfile           # Imagen nginx:1.31-alpine + archivos estáticos + health check
+docker-compose.yml   # Servicio único "snake"
+.dockerignore        # Solo envía src/ y nginx/ al build context
+nginx/nginx.conf     # Configuración mínima de Nginx (sitio estático, no-root)
+```
+
+La imagen no usa volúmenes, bind mounts ni variables de entorno, y no incluye secretos. El High Score se guarda en el `localStorage` del navegador.
+
+## Ejecutar sin Docker
+
+La app es estática: basta con servir la carpeta `src/`.
 
 **Con Python:**
 

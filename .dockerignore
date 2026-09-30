@@ -1,0 +1,6 @@
+# Solo se envía al build context lo necesario para la imagen:
+# los archivos estáticos (src/) y la configuración de Nginx (nginx/).
+# Todo lo demás (.git, .gitignore, .github, README.md, tests, etc.) queda excluido.
+*
+!src/
+!nginx/
