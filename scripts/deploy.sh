@@ -2,9 +2,8 @@
 #
 # Deployment de Snake en la VPS (SPEC-004).
 #
-# Lo ejecuta GitHub Actions por SSH como usuario "deploy". En authorized_keys
-# se configura como forced command, por lo que la clave de CI solo puede
-# ejecutar este script. También puede ejecutarse a mano:
+# Lo ejecuta el runner self-hosted de GitHub Actions en la VPS, como usuario
+# "deploy" (sudo -n -H -u deploy). También puede ejecutarse a mano como deploy:
 #
 #   /opt/apps/app_snake/scripts/deploy.sh <commit-sha>
 #
@@ -28,14 +27,12 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 log()  { printf '[deploy] %s\n' "$*"; }
 fail() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# Obtiene el SHA a desplegar. Con forced command, lo que envía el cliente
-# llega en SSH_ORIGINAL_COMMAND; solo se acepta un SHA de 40 caracteres
-# hexadecimales como último argumento (nunca se ejecuta lo recibido).
+# Obtiene el SHA a desplegar: un único argumento con el commit completo
+# (40 caracteres hexadecimales).
 parse_sha() {
-  local input="${SSH_ORIGINAL_COMMAND:-$*}"
-  local sha="${input##* }"
-  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "se esperaba un commit SHA completo como argumento (recibido: '${input}')"
-  printf '%s' "$sha"
+  [[ $# -eq 1 && "$1" =~ ^[0-9a-f]{40}$ ]] \
+    || fail "se esperaba un único argumento con el commit SHA completo (recibido: '$*')"
+  printf '%s' "$1"
 }
 
 check_prerequisites() {

@@ -40,16 +40,10 @@ Developer ── git push origin main ──► GitHub
                                      versión del commit)
 ```
 
-El job de deploy se ejecuta **localmente en el VPS**, sin SSH. Para separar
+El job de deploy se ejecuta **localmente en el VPS**. Para separar
 usuarios, el runner (`github-runner`) no ejecuta Docker ni escribe en el
 repositorio: invoca `deploy.sh` como usuario `deploy` con `sudo`, mediante una
 regla sudoers que solo le permite ejecutar ese script como `deploy` (nunca root).
-
-> **Diseño descartado:** la primera versión de SPEC-004 conectaba un runner
-> hospedado por GitHub (`ubuntu-latest`) por SSH entrante hacia el VPS. No pudo
-> usarse por el firewall del VPS (IPs dinámicas de GitHub) y fue reemplazado
-> por el runner self-hosted. Una versión intermedia ejecutaba el job en el runner
-> self-hosted pero seguía haciendo SSH hacia el propio VPS; también fue eliminada.
 
 El pipeline **no** toca el reverse proxy, `/opt/webserver`, Nginx del host,
 certificados, DNS ni la red `proxy-net`.
@@ -102,7 +96,7 @@ systemctl status actions.runner.estebannoblega-app_snake.vps-production.service
 
 ## 2. Credenciales y permisos: resumen
 
-El deploy no usa claves SSH ni secrets: el runner ya está en el VPS.
+El deploy no usa secrets: el runner ya está en el VPS.
 
 | # | Elemento | Dónde se configura |
 |---|----------|--------------------|
@@ -112,13 +106,13 @@ El deploy no usa claves SSH ni secrets: el runner ya está en el VPS.
 | 4 | URL pública (`PUBLIC_URL`), opcional | Variable del environment, solo si no es `https://snake.enoblega.com.ar` |
 | 5 | Acceso del VPS a GitHub | El repositorio del VPS usa el remote HTTPS `https://github.com/estebannoblega/app_snake.git` |
 
-**No se necesitan**: secrets de GitHub, claves SSH, tokens personales (PAT),
+**No se necesitan**: secrets de GitHub, tokens personales (PAT),
 contraseñas ni acceso `root`. El workflow usa solo el `GITHUB_TOKEN` automático
 con permiso de lectura.
 
 > **#5**: con un remote HTTPS sin credenciales, `git fetch` requiere que el
 > repositorio sea accesible públicamente. Si el repositorio pasa a ser privado,
-> usar la deploy key de solo lectura descripta en [DEPLOY.md](DEPLOY.md) §3.
+> el VPS necesitará una credencial de solo lectura para `git fetch`.
 
 ---
 
@@ -216,15 +210,7 @@ En **GitHub → repositorio → Settings → Environments → `production`**:
 2. **Environment variables** (solo si hace falta): `PUBLIC_URL` (por defecto `https://snake.enoblega.com.ar`).
 3. Opcional: *Required reviewers* si querés aprobar cada deploy manualmente.
 
-### 3.7 Limpieza del diseño anterior basado en SSH
-
-Si quedaron configurados del diseño anterior, ya no se usan y conviene eliminarlos:
-
-- Secrets `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, `VPS_HOST` y variable `VPS_PORT` del environment `production`.
-- La línea de la clave de CI (`restrict,command="/opt/apps/app_snake/scripts/deploy.sh" ...`) en `~deploy/.ssh/authorized_keys`.
-- Restos en `~github-runner/.ssh/` (`deploy_key` y las entradas que el workflow anterior escribió en `known_hosts`).
-
-### 3.8 Proteger `main` (recomendado)
+### 3.7 Proteger `main` (recomendado)
 
 Como todo lo que llega a `main` se despliega, en **Settings → Branches →
 Add branch ruleset** para `main`:
@@ -233,7 +219,7 @@ Add branch ruleset** para `main`:
 - Requerir que pase el check **Tests y validación**.
 - Bloquear force pushes.
 
-### 3.9 Primer deploy automático
+### 3.8 Primer deploy automático
 
 Hacer un cambio visible (por ejemplo `APP_VERSION` en `src/game.js`), commit y
 `git push origin main`. En la pestaña **Actions** del repositorio:
@@ -305,8 +291,8 @@ deploys automáticos, detener el servicio del runner o quitarlo en *Settings →
   el grupo `docker` ni puede escribir en `/opt/apps/app_snake`: solo puede
   ejecutar `deploy.sh` como `deploy` mediante la regla sudoers.
 - `deploy` no usa `sudo` y no tiene contraseña.
-- No hay secrets ni claves SSH en GitHub para el deploy, y no hay conexiones
-  entrantes desde GitHub hacia el VPS.
+- No hay secrets en GitHub para el deploy ni conexiones entrantes desde GitHub
+  hacia el VPS.
 - El workflow corre con `permissions: contents: read` y no imprime secretos en los logs.
 - El script solo despliega commits que pertenecen a `origin/main`, valida el
   SHA (40 caracteres hexadecimales), no descarta cambios locales y no crea ni
@@ -314,6 +300,6 @@ deploys automáticos, detener el servicio del runner o quitarlo en *Settings →
 - **Limitación conocida:** pertenecer al grupo `docker` equivale en la práctica
   a privilegios de administrador sobre el host. Como `deploy.sh` se actualiza
   desde `main`, quien pueda escribir en `main` puede ejecutar código como
-  `deploy` en el VPS. Por eso se recomienda proteger `main` (3.8). Una
+  `deploy` en el VPS. Por eso se recomienda proteger `main` (3.7). Una
   alternativa más estricta (Docker rootless o un wrapper root-owned) queda para
   una SPEC futura.

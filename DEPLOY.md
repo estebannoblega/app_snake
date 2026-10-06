@@ -90,45 +90,8 @@ El repositorio del VPS usa el remote HTTPS
 `https://github.com/estebannoblega/app_snake.git`, que no requiere credenciales
 mientras el repositorio sea accesible públicamente.
 
-Si el repositorio pasa a ser **privado**, usar una **deploy key** dedicada y de
-**solo lectura**. Como usuario `deploy`:
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/github_snake_deploy -C "vps-snake-cicd-deploy-key" -N ""
-cat ~/.ssh/github_snake_deploy.pub
-```
-
-En GitHub: **repositorio → Settings → Deploy keys → Add deploy key**, pegar la
-clave pública, **sin** marcar "Allow write access".
-
-Configurar un alias SSH para usar esa clave solo con este repositorio:
-
-```bash
-cat >> ~/.ssh/config <<'EOF'
-Host github-snake
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/github_snake_deploy
-    IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-```
-
-Probar la conexión:
-
-```bash
-ssh -T git@github-snake
-```
-
-La primera vez pide confirmar la huella del host. Debe coincidir con la
-publicada por GitHub (ED25519: `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`,
-ver <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints>).
-La respuesta esperada es `Hi estebannoblega/app_snake! You've successfully authenticated...`.
-
-Y cambiar el remote del repositorio para usar ese alias:
-`git -C /opt/apps/app_snake remote set-url origin git@github-snake:estebannoblega/app_snake.git`.
-
-> La clave privada queda solo en `~/.ssh/` de la VPS. Nunca se copia al repositorio.
+Si el repositorio pasa a ser **privado**, el VPS necesitará una credencial de
+**solo lectura** para `git fetch`, configurada fuera del repositorio.
 
 ## 4. Preparar el directorio
 
@@ -227,27 +190,10 @@ snake-get http://snake-cicd/game.js | grep 'const APP_VERSION'
 
 ### Verificación funcional en navegador
 
-Como no hay puertos publicados, para probarlo desde tu PC antes de publicarlo en
-el reverse proxy se puede usar un túnel SSH hacia la IP del contenedor en `proxy-net`.
-
-En la VPS, obtener la IP (cambia si el contenedor se recrea):
-
-```bash
-docker inspect --format '{{(index .NetworkSettings.Networks "proxy-net").IPAddress}}' "$(docker compose ps -q snake)"
-```
-
-En tu PC:
-
-```bash
-ssh -L 8080:<IP_CONTENEDOR>:80 <usuario>@<IP_VPS>
-```
-
-Y abrir <http://localhost:8080>. Verificar: carga de la interfaz, movimiento,
-controles (flechas y WASD), comida, score, Game Over, RESTART, High Score y el
-texto `Version X.Y.Z` en el pie.
-
-> Si en tu PC el puerto 8080 está ocupado (por ejemplo, por el contenedor local),
-> usar otro puerto local: `ssh -L 9080:<IP_CONTENEDOR>:80 ...` y abrir `localhost:9080`.
+Abrir <https://snake.enoblega.com.ar/> (publicado por el reverse proxy) y
+verificar: carga de la interfaz, inicio con ESPACIO, movimiento, controles
+(flechas y WASD), pausa con P, comida, score, Game Over, reinicio con ESPACIO
+o RESTART, High Score y el texto `Version X.Y.Z` en el pie.
 
 ## 8. Actualización manual
 

@@ -104,11 +104,21 @@ body {
   font-size: clamp(1.6rem, 8vw, 2.4rem);
   font-weight: 800;
   letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.overlay[data-phase="OVER"] .overlay-title {
   color: var(--danger);
 }
 
 .overlay-score {
   font-size: 1.2rem;
+}
+
+.overlay-hint {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .restart {
@@ -138,6 +148,7 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
   text-align: center;
+  line-height: 1.9;
 }
 
 kbd {

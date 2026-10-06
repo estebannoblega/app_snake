@@ -10,13 +10,16 @@ const {
   changeDirection,
   createInitialState,
   generateFood,
+  getActionFromKey,
   getDirectionFromKey,
+  getPhase,
   hitsSnake,
   isOutOfBounds,
   loadHighScore,
   parseHighScore,
   saveHighScore,
   tick,
+  togglePause,
   updateHighScore,
 } = game;
 
@@ -30,6 +33,7 @@ function makeState(overrides = {}) {
     score: 0,
     gameOver: false,
     gameRunning: true,
+    paused: false,
     won: false,
     ...overrides,
   };
@@ -278,9 +282,68 @@ describe("8. Persistencia del High Score", () => {
   });
 });
 
+describe("9. Controles de partida: Espacio y P", () => {
+  test("mapea Espacio a START y P/p a PAUSE; otras teclas no son acciones", () => {
+    assert.equal(getActionFromKey(" "), "START");
+    assert.equal(getActionFromKey("Spacebar"), "START");
+    assert.equal(getActionFromKey("p"), "PAUSE");
+    assert.equal(getActionFromKey("P"), "PAUSE");
+    assert.equal(getActionFromKey("Enter"), null);
+    assert.equal(getActionFromKey("ArrowUp"), null);
+    assert.equal(getActionFromKey(undefined), null);
+  });
+
+  test("las teclas de acción no se interpretan como direcciones", () => {
+    assert.equal(getDirectionFromKey(" "), null);
+    assert.equal(getDirectionFromKey("p"), null);
+  });
+
+  test("fases: READY al cargar, RUNNING, PAUSED y OVER", () => {
+    assert.equal(getPhase(createInitialState()), "READY");
+    assert.equal(getPhase(makeState()), "RUNNING");
+    assert.equal(getPhase(makeState({ paused: true })), "PAUSED");
+    assert.equal(getPhase(makeState({ gameOver: true, gameRunning: false })), "OVER");
+  });
+
+  test("la partida no avanza antes de iniciarse", () => {
+    const ready = createInitialState();
+    assert.equal(tick(ready), ready);
+  });
+
+  test("P pausa y vuelve a reanudar", () => {
+    const paused = togglePause(makeState());
+    assert.equal(getPhase(paused), "PAUSED");
+    assert.equal(getPhase(togglePause(paused)), "RUNNING");
+  });
+
+  test("en pausa la serpiente no se mueve ni acepta giros", () => {
+    const paused = makeState({ paused: true });
+    assert.equal(tick(paused), paused);
+    assert.equal(changeDirection(paused, "UP"), paused);
+  });
+
+  test("al reanudar continúa desde la misma posición y dirección", () => {
+    const running = makeState();
+    const resumed = togglePause(togglePause(running));
+    assert.deepEqual(tick(resumed).snake, tick(running).snake);
+  });
+
+  test("P no tiene efecto antes de iniciar ni tras Game Over", () => {
+    const ready = createInitialState();
+    const over = makeState({ gameOver: true, gameRunning: false });
+    assert.equal(togglePause(ready), ready);
+    assert.equal(togglePause(over), over);
+  });
+
+  test("antes de iniciar no se aceptan giros", () => {
+    const ready = createInitialState();
+    assert.equal(changeDirection(ready, "UP"), ready);
+  });
+});
+
 describe("Configuración", () => {
   test("versión y velocidad definidas como constantes", () => {
-    assert.equal(game.APP_VERSION, "1.0.0");
+    assert.equal(game.APP_VERSION, "1.1.0");
     assert.equal(game.GAME_SPEED, 150);
     assert.equal(GRID_SIZE, 20);
   });

@@ -4,7 +4,7 @@
  * Configuración
  * ======================================================================== */
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const GRID_SIZE = 20;
 const GAME_SPEED = 150; // ms por movimiento
 const INITIAL_LENGTH = 3;
@@ -40,21 +40,36 @@ const KEY_TO_DIRECTION = {
   d: "RIGHT",
 };
 
+// Controles de partida (solo teclado de PC).
+const KEY_TO_ACTION = {
+  " ": "START", // Espacio: iniciar o reiniciar
+  Spacebar: "START", // navegadores antiguos
+  p: "PAUSE", // P: pausar o reanudar
+};
+
+function normalizeKey(key) {
+  if (typeof key !== "string") return null;
+  return key.length === 1 ? key.toLowerCase() : key;
+}
+
 /** Devuelve la dirección asociada a una tecla, o null si no es un control válido. */
 function getDirectionFromKey(key) {
-  if (typeof key !== "string") return null;
-  const normalized = key.length === 1 ? key.toLowerCase() : key;
-  return KEY_TO_DIRECTION[normalized] || null;
+  return KEY_TO_DIRECTION[normalizeKey(key)] || null;
+}
+
+/** Devuelve la acción de partida asociada a una tecla ("START" | "PAUSE"), o null. */
+function getActionFromKey(key) {
+  return KEY_TO_ACTION[normalizeKey(key)] || null;
 }
 
 /**
- * Registra una nueva dirección pendiente.
+ * Registra una nueva dirección pendiente (solo con la partida en curso).
  * Se valida contra la dirección efectivamente aplicada en el último tick
  * (no contra la pendiente), de modo que ninguna secuencia de teclas dentro
  * del mismo tick puede producir un giro de 180°.
  */
 function changeDirection(state, newDirection) {
-  if (state.gameOver || !DIRECTIONS[newDirection]) return state;
+  if (getPhase(state) !== "RUNNING" || !DIRECTIONS[newDirection]) return state;
   if (newDirection === OPPOSITE[state.direction]) return state;
   return { ...state, nextDirection: newDirection };
 }
@@ -121,8 +136,27 @@ function createInitialState(rng = Math.random) {
     score: 0,
     gameOver: false,
     gameRunning: false,
+    paused: false,
     won: false,
   };
+}
+
+/**
+ * Fase de la partida, derivada del estado:
+ * READY (cargada, sin iniciar) → RUNNING ⇄ PAUSED → OVER.
+ */
+function getPhase(state) {
+  if (state.gameOver) return "OVER";
+  if (!state.gameRunning) return "READY";
+  return state.paused ? "PAUSED" : "RUNNING";
+}
+
+/** Pausa una partida en curso o reanuda una pausada; en otras fases no cambia nada. */
+function togglePause(state) {
+  const phase = getPhase(state);
+  if (phase === "RUNNING") return { ...state, paused: true };
+  if (phase === "PAUSED") return { ...state, paused: false };
+  return state;
 }
 
 function getNextHead(head, direction) {
@@ -148,7 +182,7 @@ function updateHighScore(score, highScore) {
 
 /** Calcula el estado siguiente a partir del actual. No toca el DOM. */
 function tick(state, rng = Math.random) {
-  if (state.gameOver) return state;
+  if (getPhase(state) !== "RUNNING") return state;
 
   // 1. Leer la dirección pendiente.
   const direction = state.nextDirection;
@@ -309,6 +343,7 @@ function initApp(doc) {
   const overlayEl = doc.getElementById("overlay");
   const overlayTitleEl = doc.getElementById("overlay-title");
   const overlayScoreEl = doc.getElementById("overlay-score");
+  const overlayHintEl = doc.getElementById("overlay-hint");
   const statusEl = doc.getElementById("status");
   const restartBtn = doc.getElementById("restart");
   const versionEl = doc.getElementById("version");
@@ -321,17 +356,42 @@ function initApp(doc) {
 
   versionEl.textContent = `Version ${APP_VERSION}`;
 
+  // Textos del overlay según la fase; RUNNING no muestra overlay.
+  function getOverlay(phase) {
+    switch (phase) {
+      case "READY":
+        return { title: "SNAKE", score: "", hint: "Press SPACE to start" };
+      case "PAUSED":
+        return { title: "PAUSED", score: `Score: ${state.score}`, hint: "Press P to resume" };
+      case "OVER":
+        return {
+          title: state.won ? "YOU WIN" : "GAME OVER",
+          score: `Score: ${state.score}`,
+          hint: "Press SPACE to restart",
+        };
+      default:
+        return null;
+    }
+  }
+
   function updateUI() {
     scoreEl.textContent = String(state.score);
     highScoreEl.textContent = String(highScore);
-    if (state.gameOver) {
-      overlayTitleEl.textContent = state.won ? "YOU WIN" : "GAME OVER";
-      overlayScoreEl.textContent = `Score: ${state.score}`;
-      overlayEl.hidden = false;
-      statusEl.textContent = `${overlayTitleEl.textContent}. Score: ${state.score}. Press RESTART to play again.`;
-    } else {
-      overlayEl.hidden = true;
+
+    const phase = getPhase(state);
+    const overlay = getOverlay(phase);
+    overlayEl.hidden = overlay === null;
+    overlayEl.dataset.phase = phase;
+    if (overlay) {
+      overlayTitleEl.textContent = overlay.title;
+      overlayScoreEl.textContent = overlay.score;
+      overlayScoreEl.hidden = overlay.score === "";
+      overlayHintEl.textContent = overlay.hint;
     }
+
+    // Anuncio accesible solo cuando cambia el mensaje (no en cada tick).
+    const message = overlay ? [overlay.title, overlay.score, overlay.hint].filter(Boolean).join(". ") : "Game running.";
+    if (statusEl.textContent !== message) statusEl.textContent = message;
   }
 
   function stopLoop() {
@@ -339,6 +399,11 @@ function initApp(doc) {
       clearInterval(loopId);
       loopId = null;
     }
+  }
+
+  function startLoop() {
+    stopLoop(); // garantiza un único loop activo
+    loopId = setInterval(onTick, GAME_SPEED);
   }
 
   function onTick() {
@@ -353,24 +418,49 @@ function initApp(doc) {
   }
 
   function startGame() {
-    stopLoop(); // garantiza un único loop activo
     state = { ...createInitialState(), gameRunning: true };
-    statusEl.textContent = "Game started.";
     render(ctx, state);
     updateUI();
-    loopId = setInterval(onTick, GAME_SPEED);
+    startLoop();
+  }
+
+  function pauseOrResume() {
+    state = togglePause(state);
+    const phase = getPhase(state);
+    if (phase === "PAUSED") stopLoop();
+    else if (phase === "RUNNING") startLoop();
+    updateUI();
   }
 
   doc.addEventListener("keydown", (event) => {
+    // No interferir con atajos del navegador (por ejemplo Ctrl+P).
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const action = getActionFromKey(event.key);
+    if (action) {
+      // Evita el scroll con Espacio y que active el botón enfocado.
+      event.preventDefault();
+      if (event.repeat) return; // mantener la tecla no repite la acción
+      const phase = getPhase(state);
+      if (action === "START" && (phase === "READY" || phase === "OVER")) startGame();
+      if (action === "PAUSE") pauseOrResume();
+      return;
+    }
+
     const direction = getDirectionFromKey(event.key);
     if (!direction) return;
     event.preventDefault(); // evita el scroll con las flechas
     state = changeDirection(state, direction);
   });
 
-  restartBtn.addEventListener("click", startGame);
+  restartBtn.addEventListener("click", () => {
+    startGame();
+    restartBtn.blur(); // que Espacio/Enter no vuelvan a activar el botón
+  });
 
-  startGame();
+  // La partida queda lista y empieza con Espacio.
+  render(ctx, state);
+  updateUI();
 }
 
 /* ==========================================================================
@@ -387,7 +477,10 @@ if (typeof module !== "undefined" && module.exports) {
     HIGH_SCORE_KEY,
     DIRECTIONS,
     getDirectionFromKey,
+    getActionFromKey,
     changeDirection,
+    getPhase,
+    togglePause,
     isSamePosition,
     isOutOfBounds,
     hitsSnake,

@@ -33,11 +33,13 @@ app_snake/
 
 ## Cómo jugar
 
-- Mover: flechas `↑ ↓ ← →` o `W A S D`.
-- La serpiente arranca automáticamente hacia la derecha.
+- Controles solo de teclado (versión PC).
+- `Espacio`: inicia la partida (al cargar la página queda lista, sin moverse) y la reinicia después de perder.
+- `P`: pausa y reanuda la partida en curso.
+- Mover: flechas `↑ ↓ ← →` o `W A S D`. La serpiente arranca hacia la derecha.
 - Cada comida suma `+1` al score y hace crecer la serpiente.
 - La partida termina al chocar con un borde o con el propio cuerpo.
-- `RESTART` inicia una nueva partida (el High Score se conserva en `localStorage`).
+- El botón `RESTART` inicia una nueva partida en cualquier momento (el High Score se conserva en `localStorage`).
 
 ## Ejecutar con Docker (recomendado)
 
@@ -168,7 +170,7 @@ Las constantes están al inicio de `src/game.js`:
 
 | Constante     | Valor     | Descripción                          |
 | ------------- | --------- | ------------------------------------ |
-| `APP_VERSION` | `"1.0.0"` | Versión mostrada en la interfaz      |
+| `APP_VERSION` | `"1.1.0"` | Versión mostrada en la interfaz      |
 | `GAME_SPEED`  | `150`     | Milisegundos por movimiento          |
 | `GRID_SIZE`   | `20`      | Tamaño lógico del tablero (20 × 20)  |
 
@@ -176,7 +178,7 @@ La versión se define solo en `APP_VERSION`; el HTML la muestra desde esa consta
 
 ## CI/CD
 
-Cada push a `main` ejecuta los tests en un runner hospedado por GitHub (`ubuntu-latest`) y, si pasan, despliega automáticamente con el runner self-hosted `vps-production`, instalado en el propio VPS. El runner ejecuta localmente `scripts/deploy.sh` en `/opt/apps/app_snake` como usuario `deploy` (con `sudo`, mediante una regla limitada a ese script), sin SSH, verificando que el contenedor quede healthy en `proxy-net` y que <https://snake.enoblega.com.ar/> sirva la nueva versión. Los pull requests hacia `main` solo ejecutan los tests y nunca llegan al runner del VPS.
+Cada push a `main` ejecuta los tests en un runner hospedado por GitHub (`ubuntu-latest`) y, si pasan, despliega automáticamente con el runner self-hosted `vps-production`, instalado en el propio VPS. El runner ejecuta localmente `scripts/deploy.sh` en `/opt/apps/app_snake` como usuario `deploy` (con `sudo`, mediante una regla limitada a ese script), verificando que el contenedor quede healthy en `proxy-net` y que <https://snake.enoblega.com.ar/> sirva la nueva versión. Los pull requests hacia `main` solo ejecutan los tests y nunca llegan al runner del VPS.
 
 La arquitectura, el runner self-hosted, la configuración (regla sudoers del runner, environment `production`) y la operación (leer resultados, redesplegar, rollback) están en [CICD.md](CICD.md).
 

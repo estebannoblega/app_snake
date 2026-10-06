@@ -23,9 +23,10 @@
               aria-label="Snake game board, 20 by 20 grid">
         Your browser does not support the canvas element.
       </canvas>
-      <div id="overlay" class="overlay" hidden>
-        <p id="overlay-title" class="overlay-title">GAME OVER</p>
-        <p id="overlay-score" class="overlay-score">Score: 0</p>
+      <div id="overlay" class="overlay" data-phase="READY">
+        <p id="overlay-title" class="overlay-title">SNAKE</p>
+        <p id="overlay-score" class="overlay-score" hidden></p>
+        <p id="overlay-hint" class="overlay-hint">Press SPACE to start</p>
       </div>
     </div>
 
@@ -33,7 +34,10 @@
 
     <button id="restart" class="restart" type="button">RESTART</button>
 
-    <p class="help">Use <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move.</p>
+    <p class="help">
+      <kbd>Space</kbd> start / restart · <kbd>P</kbd> pause<br>
+      <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move
+    </p>
 
     <footer id="version" class="version"></footer>
   </main>
