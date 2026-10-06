@@ -60,7 +60,7 @@ jobs:
     needs: test
     # Solo commits de main (push o ejecución manual sobre main); nunca PRs ni otras ramas.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, production]
     timeout-minutes: 15
     environment:
       name: production
