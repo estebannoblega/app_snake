@@ -28,12 +28,6 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 log()  { printf '[deploy] %s\n' "$*"; }
 fail() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# shellcheck disable=SC2329  # invocada por "trap on_exit EXIT"
-on_exit() {
-  local rc=$?
-  (( rc == 0 )) || printf '\n[deploy] ======== DEPLOYMENT FALLIDO ========\n' >&2
-}
-
 # Obtiene el SHA a desplegar. Con forced command, lo que envía el cliente
 # llega en SSH_ORIGINAL_COMMAND; solo se acepta un SHA de 40 caracteres
 # hexadecimales como último argumento (nunca se ejecuta lo recibido).
@@ -128,7 +122,8 @@ cleanup_images() {
 }
 
 main() {
-  trap on_exit EXIT
+  # Banner de falla para cualquier salida con error (incluido fail).
+  trap 'rc=$?; (( rc == 0 )) || printf "\n[deploy] ======== DEPLOYMENT FALLIDO ========\n" >&2' EXIT
   local sha
   sha="$(parse_sha "$@")"
   log "Deployment solicitado para $sha"
