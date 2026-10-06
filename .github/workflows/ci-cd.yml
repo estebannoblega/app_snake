@@ -59,6 +59,7 @@ jobs:
     name: Deploy a VPS
     needs: test
     # Solo commits de main (push o ejecución manual sobre main); nunca PRs ni otras ramas.
+    # Crítico: este job corre en el runner self-hosted instalado en el VPS de producción.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: [self-hosted, production]
     timeout-minutes: 15
@@ -70,54 +71,21 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     env:
-      DEPLOY_USER: deploy
       APP_DIR: /opt/apps/app_snake
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_PORT: ${{ vars.VPS_PORT || '22' }}
       PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://snake.enoblega.com.ar' }}
     steps:
-      - name: Checkout (solo la versión de la app)
-        uses: actions/checkout@v5
-        with:
-          sparse-checkout: src/game.js
-          sparse-checkout-cone-mode: false
-
-      - name: Verificar configuración
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      # Ejecución local en el VPS: deploy.sh actualiza el checkout de APP_DIR al
+      # commit indicado, reconstruye, levanta y verifica el servicio.
+      # Corre como "deploy" (dueño del repo, grupo docker) mediante una regla
+      # sudoers que solo permite a github-runner ejecutar este script como deploy.
+      - name: Deploy local en el VPS
         run: |
-          missing=0
-          for name in VPS_HOST VPS_SSH_KEY VPS_KNOWN_HOSTS; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Falta el secret $name en el environment 'production'"
-              missing=1
-            fi
-          done
-          exit "$missing"
-
-      - name: Configurar SSH
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-      - name: Deploy en la VPS
-        run: |
-          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" \
-            -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
-            "$DEPLOY_USER@$VPS_HOST" "$APP_DIR/scripts/deploy.sh $GITHUB_SHA"
+          cd /
+          sudo -n -H -u deploy "$APP_DIR/scripts/deploy.sh" "$GITHUB_SHA"
 
       - name: Verificar URL pública
         run: |
-          expected="$(grep -oE 'APP_VERSION = "[^"]+"' src/game.js)"
+          expected="$(grep -oE 'APP_VERSION = "[^"]+"' "$APP_DIR/src/game.js")"
           for i in 1 2 3 4 5; do
             served="$(curl -fsS --max-time 10 "$PUBLIC_URL/game.js" | grep -oE 'APP_VERSION = "[^"]+"' || true)"
             if [ "$served" = "$expected" ]; then
@@ -129,7 +97,3 @@ jobs:
           done
           echo "::error::$PUBLIC_URL no sirve la versión desplegada"
           exit 1
-
-      - name: Eliminar clave SSH
-        if: always()
-        run: rm -f ~/.ssh/deploy_key

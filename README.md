@@ -21,10 +21,11 @@ app_snake/
 ├── compose.local.yml   # Override solo para desarrollo local: publica 127.0.0.1:8080
 ├── .dockerignore
 ├── scripts/
-│   └── deploy.sh    # Deploy en la VPS (lo ejecuta GitHub Actions por SSH)
+│   └── deploy.sh    # Deploy en la VPS (lo ejecuta el runner self-hosted como deploy)
 ├── .github/workflows/
 │   └── ci-cd.yml    # Pipeline CI/CD: tests → deploy → verificación
 ├── CICD.md          # CI/CD: funcionamiento, credenciales y operación (SPEC-004)
+├── CLAUDE.md        # Contexto y reglas para agentes de IA
 ├── DEPLOY.md        # Preparación y deployment manual en la VPS (SPEC-003)
 ├── README.md
 └── .gitignore
@@ -175,17 +176,17 @@ La versión se define solo en `APP_VERSION`; el HTML la muestra desde esa consta
 
 ## CI/CD
 
-Cada push a `main` ejecuta los tests en GitHub Actions y, si pasan, despliega automáticamente en la VPS (`/opt/apps/app_snake`) por SSH con el usuario `deploy`, verificando que el contenedor quede healthy en `proxy-net` y que el dominio sirva la nueva versión. Los pull requests hacia `main` solo ejecutan los tests.
+Cada push a `main` ejecuta los tests en un runner hospedado por GitHub (`ubuntu-latest`) y, si pasan, despliega automáticamente con el runner self-hosted `vps-production`, instalado en el propio VPS. El runner ejecuta localmente `scripts/deploy.sh` en `/opt/apps/app_snake` como usuario `deploy` (con `sudo`, mediante una regla limitada a ese script), sin SSH, verificando que el contenedor quede healthy en `proxy-net` y que <https://snake.enoblega.com.ar/> sirva la nueva versión. Los pull requests hacia `main` solo ejecutan los tests y nunca llegan al runner del VPS.
 
-La configuración (qué secrets crear, la clave SSH de CI restringida, la huella del servidor) y la operación (leer resultados, redesplegar, rollback) están en [CICD.md](CICD.md).
+La arquitectura, el runner self-hosted, la configuración (regla sudoers del runner, environment `production`) y la operación (leer resultados, redesplegar, rollback) están en [CICD.md](CICD.md).
 
 ## Deployment manual en VPS
 
-El servicio se conecta a la red existente `proxy-net` y no publica puertos en el host. El procedimiento completo (usuario de deployment, deploy key SSH, verificación de la red, clonado en `/opt/apps/app_snake/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
+El servicio se conecta a la red existente `proxy-net` y no publica puertos en el host. El procedimiento completo (usuario de deployment, acceso al repositorio, verificación de la red, clonado en `/opt/apps/app_snake/`, verificación, actualización, rollback y operación) está en [DEPLOY.md](DEPLOY.md). Resumen:
 
 ```bash
 # Primer deployment (en la VPS, como usuario de deployment)
-git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/app_snake
+git clone https://github.com/estebannoblega/app_snake.git /opt/apps/app_snake
 cd /opt/apps/app_snake
 docker compose build && docker compose up -d
 docker network inspect proxy-net >/dev/null   # la red debe existir (no se crea)

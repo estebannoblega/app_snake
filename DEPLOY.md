@@ -2,7 +2,8 @@
 
 Procedimiento manual para preparar la VPS, desplegar, actualizar y hacer rollback de Snake.
 
-> Desde SPEC-004 los deploys a `main` son automáticos mediante GitHub Actions
+> Desde SPEC-004 los deploys a `main` son automáticos mediante GitHub Actions,
+> ejecutados por el runner self-hosted `vps-production` instalado en el propio VPS
 > (ver [CICD.md](CICD.md)). Este documento sirve para la preparación inicial de la
 > VPS, para operar a mano en caso de emergencia y como referencia de lo que
 > automatiza `scripts/deploy.sh`.
@@ -15,14 +16,14 @@ Procedimiento manual para preparar la VPS, desplegar, actualizar y hacer rollbac
 | Elemento               | Valor                                        |
 | ---------------------- | -------------------------------------------- |
 | Directorio             | `/opt/apps/app_snake/`                      |
-| Repositorio            | `git@github.com:estebannoblega/app_snake.git` |
+| Repositorio            | `https://github.com/estebannoblega/app_snake.git` |
 | Proyecto Compose       | `snake-cicd`                                 |
 | Servicio Compose       | `snake`                                      |
 | Imagen                 | `snake-cicd:latest` (se construye en la VPS) |
 | Red                    | `proxy-net` (externa, ya existente)          |
 | Nombre en la red       | `snake-cicd` → `http://snake-cicd:80`        |
 | Puertos en el host     | Ninguno                                      |
-| Usuario de deployment  | `deploy` (o el usuario de apps ya existente) |
+| Usuario de deployment  | `deploy` (dueño de `/opt/apps/app_snake`, grupo `docker`) |
 
 ```text
 VPS
@@ -83,12 +84,14 @@ El resto del procedimiento se ejecuta como ese usuario:
 sudo -iu deploy
 ```
 
-## 3. Clave SSH para que la VPS lea el repositorio
+## 3. Acceso de la VPS al repositorio
 
-Se usa una **deploy key** dedicada y de **solo lectura**, distinta de cualquier
-clave que en el futuro use GitHub Actions para entrar a la VPS.
+El repositorio del VPS usa el remote HTTPS
+`https://github.com/estebannoblega/app_snake.git`, que no requiere credenciales
+mientras el repositorio sea accesible públicamente.
 
-Como usuario `deploy`:
+Si el repositorio pasa a ser **privado**, usar una **deploy key** dedicada y de
+**solo lectura**. Como usuario `deploy`:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/github_snake_deploy -C "vps-snake-cicd-deploy-key" -N ""
@@ -122,6 +125,9 @@ publicada por GitHub (ED25519: `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCO
 ver <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints>).
 La respuesta esperada es `Hi estebannoblega/app_snake! You've successfully authenticated...`.
 
+Y cambiar el remote del repositorio para usar ese alias:
+`git -C /opt/apps/app_snake remote set-url origin git@github-snake:estebannoblega/app_snake.git`.
+
 > La clave privada queda solo en `~/.ssh/` de la VPS. Nunca se copia al repositorio.
 
 ## 4. Preparar el directorio
@@ -136,7 +142,7 @@ sudo chown deploy:deploy /opt/apps/app_snake
 Como `deploy`, clonar el repositorio dentro del directorio:
 
 ```bash
-git clone git@github-snake:estebannoblega/app_snake.git /opt/apps/app_snake
+git clone https://github.com/estebannoblega/app_snake.git /opt/apps/app_snake
 cd /opt/apps/app_snake
 git log -1 --oneline
 ```
@@ -331,6 +337,11 @@ reinicio de la VPS, salvo que se haya detenido con `docker compose down`.
 
 La publicación la hace el administrador modificando manualmente el reverse
 proxy existente. Nada de este repositorio modifica `/opt/webserver/`.
+
+Estado actual: el reverse proxy corre en el contenedor `reverse-proxy-prod`
+(`/opt/webserver`), conectado a `proxy-net`, y publica Snake en
+<https://snake.enoblega.com.ar/>. Su configuración, DNS y certificados se
+administran fuera de este repositorio.
 
 El reverse proxy debe estar conectado a `proxy-net` y apuntar a:
 
